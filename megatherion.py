@@ -51,6 +51,8 @@ def common(iterable):  # from ChatGPT
     return first_value
 
 
+
+
 class Column(MutableSequence):  # implement MutableSequence (some method are mixed from abc)
     """
     Representation of column of dataframe. Column has datatype: float columns contains
@@ -125,7 +127,11 @@ class Column(MutableSequence):  # implement MutableSequence (some method are mix
         :return: new column
         """
         assert len(indices) == len(self)
-        ...
+        # reseni
+        result: list = []
+        for index in indices:
+            result.append(self._data[index])
+        return Column(result, self.dtype)
 
     def copy(self) -> 'Column':
         """
@@ -141,7 +147,7 @@ class Column(MutableSequence):  # implement MutableSequence (some method are mix
         characters. Numbers (floats) are right aligned and strings left aligned.
         Nones are formatted as aligned "n/a".
         :param index: index of item
-        :param width:  width
+        :param width:  widthw
         :return:
         """
         assert width > 0
@@ -214,39 +220,47 @@ class DataFrame:
     def dot(self, other: 'DataFrame') -> 'DataFrame':
         ...
 
-    def transpose(self) -> 'DataFrame': # FIXME doesnt work if number of rows is bigger than columns
-        dataFrame_transposed = copy.deepcopy(self)
-        count = iter(self._columns)
-        for row in self:
-            dataFrame_transposed._columns[next(count)] = Column(list(row), Type.Float)  # FIXME need to correctly assign Type.
-
-        return dataFrame_transposed
-        # for col in df.columns:
-        #     print(df._columns[col][1])
+    def transpose(self) -> 'DataFrame': # Works only if all col.dtype 's are the same
+        result_dict: dict = {}
+        for i in range(self._size):
+            new_col_values: list = []
+            for col_name, col in self._columns.items():
+                col_type = col.dtype
+                new_col_values.append(col[i])
+            new_col = Column(new_col_values, col_type)
+            result_dict.update({str(i): new_col})
+        return DataFrame(result_dict)
 
     def product(self, axis: int = 0) -> 'DataFrame':
+        result_dict: dict = {}
+        prod: float = 1
+        result_col = Column([], Type.Float)
         if not axis:
-            dataframe_product = DataFrame(dict(a=Column([0 for col in self._columns], Type.Float)))
-            result: int = 1
-            count = 0
-            for col in self._columns:
-                for i in range(len(self._columns[col])):
-                    result *= self._columns[col][i]
-                dataframe_product._columns["a"][count] = result
-                count += 1
-                result = 1
-            return dataframe_product
-        if axis:
-            dataframe_product = DataFrame(dict(a=Column([0 for row in self], Type.Float)))
-            result: int = 1
-            count = 0
+            for name, col in self._columns.items():
+                if col.dtype == Type.Float:
+                    for ele in col[::]:
+                        if ele:
+                            prod *= ele
+                    result_col.append(prod)
+                else:
+                    result_col.append(None)
+                prod = 1.0
+        else:
             for row in self:
-                for i in range(len(row)):
-                    result *= row[i]
-                dataframe_product._columns["a"][count] = result
-                count += 1
-                result = 1
-            return dataframe_product
+                for ele in row:
+                    print(type(ele))
+                    if not (type(ele) is float):
+                        """IF ANY OF THE COLUMNS IS Type.String THEN ALL PRODUCTS OF ROWS ARE n/a FOR EVERY ROW"""
+                        [result_col.append(None) for i in self]
+                        result_dict.update({"PRODUCT": result_col})
+                        return DataFrame(result_dict)
+                    else:
+                        print("ASD")
+                        prod *= ele
+                result_col.append(prod)
+                prod = 1.0
+        result_dict.update({"PRODUCT": result_col})
+        return DataFrame(result_dict)
 
     def to_replace(self, to_replace, value) -> None:
         if type(to_replace) != list:
@@ -259,33 +273,89 @@ class DataFrame:
                     self._columns[col][ele] = value
 
     def diff(self, axis: int = 0):
-        df_copy = copy.deepcopy(self)
-        if not axis:
-            for c in df_copy._columns:
-                for i in range(1, len(df_copy._columns[c]), 1):
-                    pass
+        if axis == 0:
+            for name, col in self._columns.items():
 
-        return df_copy
+                for index in range(len(col) - 1, 0, -1):
+                    col[index] = col[index] - col[index - 1]
+                col[0] = None
+        elif axis == 1:
+            for index in range(self._size):
+                temp_value = None
+                for name, col in self._columns.items():
+                    if not temp_value:
+                        temp_value = col[index]
+                        col[index] = None
+                        continue
+                    col[index] -= temp_value
+                    temp_value = col[index] + temp_value
+
 
     def cumsum(self, axis: int = 0) -> 'DataFrame':
-        df_copy = copy.deepcopy(self)
-        cumsum: float = 0
-        if not axis:
-            for col in df_copy._columns:
-                for i in range(0, len(df_copy._columns[col])):
-                    if df_copy._columns[col][i] is not None:
-                        cumsum += df_copy._columns[col][i]
-                        df_copy._columns[col][i] = cumsum
-                cumsum = 0
-        else:
-            for row in df_copy:
-                for i in range(len(row)):
-                    if row[i] is not None:
-                        cumsum += row[i]
-                        row[i] = cumsum
-                cumsum = 0
-        return df_copy
+        result_dict: dict = {}
+        if axis == 0:
+            for name, col in self._columns.items():
+                new_col_values: list = [col[0]]
+                new_col_cumsum: int = col[0]
+                for i in range(1, len(col[1:])+ 1):
+                    new_col_cumsum += col[i]
+                    new_col_values.append(new_col_cumsum)
+                result_dict.update({name: Column(new_col_values, Type.Float)})
+        elif axis == 1:
+            rows = [{name: col[i] for name, col in self._columns.items()} for i in range(len(self))]
+            for row in rows:
+                row_cumsum: int = 0
+                for name, value in row.items():
+                    row_cumsum += value
+                    row[name] = row_cumsum
+            result_dict = {name: [row[name] for row in rows] for name in self.columns}
+        for ele in result_dict:
+            if type(result_dict[ele][0]) == float:
+                result_dict[ele] = Column(result_dict[ele], Type.Float)
+            else:
+                result_dict[ele] = Column(result_dict[ele], Type.String)
+        return DataFrame(result_dict)
 
+    def unique(self, col_name: str) -> 'DataFrame':
+        """A little too complicated, probably can do deepcopy of self, then
+            del col[index] all shit and return copy
+        """
+        result_dict: dict = {}
+        to_del: list = []
+        for i in range(0,self._size,1):
+            for j in range(i+1,self._size,1):
+                if self._columns[col_name][j] == self._columns[col_name][i]:
+                    if j not in to_del:
+                        to_del.append(j)
+        for name, col in self._columns.items():
+            col_c = copy.deepcopy(col)
+            for ele in to_del[::-1]:
+                del col_c[ele]
+            result_dict.update({name: col_c})
+
+        return DataFrame(result_dict)
+
+    def compare(self, other: 'DataFrame') -> 'DataFrame':
+        assert len(self._columns) == len(other._columns)
+        result_dict: dict = {}
+        # data = [{name: col[i] for name, col in self._columns.items()} for i in range(len(self))]
+        # data_other = [{name: col[i] for name, col in other._columns.items()} for i in range(len(other))]
+
+        for name in self._columns.keys():
+            result_col_values_self: list = []
+            result_col_values_other: list = []
+            for i in range(self._size):
+                if not (self._columns[name][i] == other._columns[name][i]):
+                    result_col_values_self.append(self._columns[name][i])
+                    result_col_values_other.append(other._columns[name][i])
+                else:
+                    result_col_values_self.append(None)
+                    result_col_values_other.append(None)
+            result_col_self = Column(result_col_values_self, self._columns[name].dtype)
+            result_col_other = Column(result_col_values_other, other._columns[name].dtype)
+            result_dict.update({name: result_col_self})
+            result_dict.update({name+"_other": result_col_other})
+        return DataFrame(result_dict)
 
     def append_column(self, col_name: str, column: Column) -> None:
         """
@@ -302,20 +372,13 @@ class DataFrame:
         Appends new row to dataframe.
         :param row: tuple of values for all columns
         """
-
-        if len(row) != len(self.columns):
+        if len(row) != len(self._columns):
             print(f"Wrong size: length of dataframe - {len(self._columns)}, length of given row - {len(row)}")
             return 0
-        count: int = 0
-        for col in self._columns:
-            #print(f"DB: {self._columns[col][0]} is {type(self._columns[col][0])} == {row[count]} is{type(row[count])}")
-            if type(self._columns[col][0]) != type(row[count]):
-                raise TypeError("WRONG TYPE OF DATA")
-            count += 1
-        i: int = 0
-
-        for col, value in zip(self._columns, row):
-            self._columns[col].append(value)
+        index: int = 0
+        for name, col in self._columns.items():
+            col.append(row[index])  # append method handles ValueError, because it utilizes _cast attribute ->
+            index += 1              # therefore no need to implement try/except. i.e. "7" is cast to 7, "a" is ValueError
         self._size += 1
 
     def filter(self, col_name: str,
@@ -340,18 +403,51 @@ class DataFrame:
         return DataFrame(filter_res)
 
     def sort(self, col_name: str, ascending=True) -> 'DataFrame':
+        """Couldn't do it myself
+            src: github.com/ValdemarPospisil/Megatherion/blob/main/megatherion.py#L197
         """
-        Sort dataframe by column with `col_name` ascending or descending.
-        :param col_name: name of key column
-        :param ascending: direction of sorting
-        :return: new dataframe
-        """
-        self_copy = copy.deepcopy(self)
-        if self._columns[col_name].dtype is not Type.Float:
-            raise TypeError("Cannot sort NON-Type.Float Columns")
-        self_copy._columns[col_name] = Column(sorted(self_copy._columns[col_name][::]), Type.Float)
-        return self_copy
+        # Mainly just this part was ctrl-cv'ed
+        data = [{name: col[i] for name, col in self._columns.items()} for i in range(len(self))]
+        sorted_data = self.__merge_sort(data, col_name, ascending)
+        sorted_columns = {name: [row[name] for row in sorted_data] for name in self.columns}
+        # ---
+        # Did only this myself
+        for ele in sorted_columns:
+            if type(sorted_columns[ele][0]) == float:
+                sorted_columns[ele] = Column(sorted_columns[ele], Type.Float)
+            else:
+                sorted_columns[ele] = Column(sorted_columns[ele], Type.String)
+        # ---
+        return DataFrame(sorted_columns)
 
+    @staticmethod
+    def __merge_sort(arr, col_name, ascending=True):
+        if len(arr) <= 1:
+            return arr
+
+        mid = len(arr) // 2
+        left = DataFrame.__merge_sort(arr[:mid], col_name, ascending)
+        right = DataFrame.__merge_sort(arr[mid:], col_name, ascending)
+
+        return DataFrame.__merge(left, right, col_name, ascending)
+
+    @staticmethod
+    def __merge(left, right, col_name, ascending):
+        result = []
+        left_idx, right_idx = 0, 0
+
+        while left_idx < len(left) and right_idx < len(right):
+            if (left[left_idx][col_name] < right[right_idx][col_name]) if ascending else (
+                    left[left_idx][col_name] > right[right_idx][col_name]):
+                result.append(left[left_idx])
+                left_idx += 1
+            else:
+                result.append(right[right_idx])
+                right_idx += 1
+
+        result.extend(left[left_idx:])
+        result.extend(right[right_idx:])
+        return result
 
     def describe(self) -> str:
         """
@@ -392,12 +488,28 @@ class DataFrame:
             Possible collision of column identifiers is resolved by prefixing `_other` to
             columns from `other` data table.
         """
-        ...
+        #Reseni
+        """it does in fact work"""
+        result_df = copy.deepcopy(self)
+        keys: list = []
+        for ele in self._columns[self_key_column]:
+            for i in range(len(other._columns[other_key_column])):
+                if other._columns[other_key_column][i] == ele:
+                    keys.append(i)
+        #print(f"keys: {keys}")
+        for name, col in other._columns.items():
+            if name == other_key_column:
+                continue
+            new_col_values: list = []
+            for key in keys:
+                new_col_values.append(col[key])
+            result_df.append_column(name, Column(new_col_values, col.dtype))
+        return result_df
 
     def setvalue(self, col_name: str, row_index: int, value: Any) -> None:
         """
         Set new value in dataframe.
-        :param col_name:  name of culumns
+        :param col_name:  name of columns
         :param row_index: index of row
         :param value:  new value (value is cast to type of column)
         :return:
