@@ -1,4 +1,5 @@
 import copy
+import random
 from abc import abstractmethod, ABC
 from json import load
 from numbers import Real
@@ -218,7 +219,19 @@ class DataFrame:
         return "\n".join(lines)
 
     def dot(self, other: 'DataFrame') -> 'DataFrame':
-        ...
+        #print(f"asser {self._size} == {len(other._columns)} : {self._size == len(other._columns)}")
+        assert self._size == len(other._columns)
+        result_dict: dict = {}
+        for other_name, other_col in other._columns.items():
+            new_col_values: list = []
+
+            for row_index in range(self._size):
+                value_to_add = sum([other_col[i]*self[row_index][i] for i in range(len(self._columns))])
+                new_col_values.append(value_to_add)
+            result_dict.update({other_name: Column(new_col_values, Type.Float)})
+        return DataFrame(result_dict)
+        #WORKS HELLL YEAH
+
 
     def transpose(self) -> 'DataFrame': # Works only if all col.dtype 's are the same
         result_dict: dict = {}
@@ -356,6 +369,40 @@ class DataFrame:
             result_dict.update({name: result_col_self})
             result_dict.update({name+"_other": result_col_other})
         return DataFrame(result_dict)
+
+    def sample(self, number_rows: int) -> 'DataFrame':
+        indices_of_rows = random.sample(range(0, self._size), number_rows)
+        data = [{name: col[i] for name, col in self._columns.items()} for i in range(self._size)]
+        data_sample: list[dict] = []
+        for index in sorted(indices_of_rows):
+            data_sample.append(data[index])
+        result_dict: dict = {name: [row[name] for row in data_sample] for name in self.columns}
+        for ele in result_dict:
+            if type(result_dict[ele][0]) == float:
+                result_dict[ele] = Column(result_dict[ele], Type.Float)
+            else:
+                result_dict[ele] = Column(result_dict[ele], Type.String)
+        return DataFrame(result_dict)
+
+    def melt(self, id_vars: list, value_vars: list) -> 'DataFrame':
+        result_dict: dict = {}
+        id_vars_x: dict = {name: [] for name in id_vars}
+        variable: list = []
+        values: list = []
+
+        for col_name in value_vars:
+            for id_name in id_vars_x:
+                id_vars_x[id_name].extend(self._columns[id_name][::])
+            for i in range(self._size):
+                variable.append(col_name)
+            values.extend(self._columns[col_name][::])
+        for id in id_vars:
+            result_dict.update({id: Column(id_vars_x[id], Type.String)})
+        result_dict.update({'variable': Column(variable, Type.String)})
+        result_dict.update({'values': Column(values, Type.String)})
+
+        return DataFrame(result_dict)
+        # Kinda did it but everything is cast to Type.String (annoying)
 
     def append_column(self, col_name: str, column: Column) -> None:
         """
